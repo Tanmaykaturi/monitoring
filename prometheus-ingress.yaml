@@ -4,9 +4,13 @@ metadata:
   name: prometheus-ingress
   namespace: monitoring
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    cert-manager.io/cluster-issuer: letsencrypt  # Add this
 spec:
   ingressClassName: nginx
+  tls:  # Add this section
+  - hosts:
+    - prometheus.your-domain.com
+    secretName: prometheus-tls-cert
   rules:
   - host: prometheus.your-domain.com
     http:
