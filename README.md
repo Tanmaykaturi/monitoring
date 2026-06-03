@@ -12,8 +12,6 @@ Update the following fields with your specific environment details:
 * **Line 43-45:** `targets` (tcp) ➡️ `db.example.com:5432`
 * **Line 59-61:** `targets` (icmp) ➡️ `8.8.8.8`
 
-#### 📄 `cert-issuer.yaml`
-* **Line 8:** `email` ➡️ Your admin email address
 
 #### 📄 `prometheus-ingress.yaml`
 * **Line 13 & 18:** `hosts` / `host` ➡️ Your Prometheus domain (e.g., `prometheus.your-domain.com`)
