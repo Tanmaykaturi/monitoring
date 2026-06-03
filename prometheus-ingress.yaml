@@ -3,16 +3,10 @@ kind: Ingress
 metadata:
   name: prometheus-ingress
   namespace: monitoring
-  annotations:
-    cert-manager.io/issuer: letsencrypt-monitoring
 spec:
   ingressClassName: nginx
-  tls:
-  - hosts:
-    - prometheus.your-domain.com  # UPDATE WITH YOUR DOMAIN
-    secretName: prometheus-tls-cert
   rules:
-  - host: prometheus.your-domain.com  # UPDATE WITH YOUR DOMAIN
+  - host: prometheus.your-domain.com
     http:
       paths:
       - path: /
