@@ -1,41 +1,27 @@
-# 📊 Prometheus Monitoring Setup
-
-A quick and comprehensive installation guide for deploying Prometheus with automated SSL certificate management on Kubernetes.
-
----
-
-## 📌 Prerequisites
-
-Before you begin, ensure you have the following ready:
-* **CLI Tools:** `kubectl` and `helm` installed locally.
-* **Access:** `kubeconfig` access to your target Kubernetes cluster.
-* **Ingress:** Nginx Ingress Controller installed and running.
-* **Certificates:** `cert-manager` installed for handling SSL.
-* **DNS:** A valid domain name designated for your Prometheus instance.
-
----
+# 🌐 Prometheus with Blackbox Exporter Setup
 
 ## 🚀 Installation Steps
 
-### Step 1: Configure Values
-Update the following configuration files with your cluster-specific values before deployment.
+### Step 1: Update Configuration Files
 
-**`prometheus-values.yaml`**
-* **Line 12:** `cluster: "YOUR-CLUSTER-NAME"`
-* **Line 18:** `storageClassName: "YOUR-STORAGE-CLASS"`
-> 💡 *To find your available storage classes, run:* `kubectl get storageclass`
+#### 📄 `prometheus-values.yaml`
+Update the following fields with your specific environment details:
+* **Line 13:** `cluster` ➡️ `"YOUR-CLUSTER-NAME"`
+* **Line 19:** `storageClassName` ➡️ `"YOUR-STORAGE-CLASS"` *(Run `kubectl get storageclass` to find this)*
+* **Line 26-28:** `targets` (http) ➡️ `https://myapp.com`
+* **Line 43-45:** `targets` (tcp) ➡️ `db.example.com:5432`
+* **Line 59-61:** `targets` (icmp) ➡️ `8.8.8.8`
 
-**`cert-issuer.yaml`**
-* **Line 8:** `email: your-email@example.com`
+#### 📄 `cert-issuer.yaml`
+* **Line 8:** `email` ➡️ Your admin email address
 
-**`prometheus-ingress.yaml`**
-* **Line 13:** `- prometheus.YOUR-DOMAIN.com`
-* **Line 18:** `- host: prometheus.YOUR-DOMAIN.com`
+#### 📄 `prometheus-ingress.yaml`
+* **Line 13 & 18:** `hosts` / `host` ➡️ Your Prometheus domain (e.g., `prometheus.your-domain.com`)
 
 ### Step 2: Set Kubeconfig & Verify
 ```bash
 export KUBECONFIG=/path/to/your/cluster.config
-kubectl get nodes  # Verify connection
+kubectl get nodes
 
 ```
 
@@ -54,7 +40,7 @@ helm repo update
 
 ```
 
-### Step 5: Install Prometheus
+### Step 5: Install Prometheus & Blackbox Exporter
 
 ```bash
 helm install prometheus prometheus-community/kube-prometheus-stack \
@@ -63,15 +49,18 @@ helm install prometheus prometheus-community/kube-prometheus-stack \
 
 ```
 
-### Step 6: Wait for Pods
+### Step 6: Wait for Pods to Initialize
 
 ```bash
-# Check status
-kubectl get pods -n monitoring
-
-# Wait for ready state
+# Wait for Prometheus
 kubectl wait --for=condition=ready pod \
   -l app.kubernetes.io/name=prometheus \
+  -n monitoring \
+  --timeout=300s
+
+# Wait for Blackbox Exporter
+kubectl wait --for=condition=ready pod \
+  -l app.kubernetes.io/name=prometheus-blackbox-exporter \
   -n monitoring \
   --timeout=300s
 
@@ -81,158 +70,43 @@ kubectl wait --for=condition=ready pod \
 
 ```bash
 kubectl apply -f cert-issuer.yaml
-
-# Verify issuer
 kubectl get issuer -n monitoring
 
 ```
 
-### Step 8: Apply Ingress
+### Step 8: Apply Ingress Route
 
 ```bash
 kubectl apply -f prometheus-ingress.yaml
-
-# Check certificate status
 kubectl get certificate -n monitoring
 
 ```
 
-### Step 9: Configure DNS
+### Step 9: Configure DNS Settings
 
-First, retrieve your ingress IP or hostname:
+Retrieve your ingress IP address:
 
 ```bash
-kubectl get ingress -n monitoring prometheus-ingress
+kubectl get ingress -n monitoring
 
 ```
 
-Next, create a DNS record with your domain provider:
+In your domain registrar, create an **A Record** or **CNAME** pointing `prometheus.your-domain.com` to the retrieved Ingress IP.
 
-* **Type:** `A` or `CNAME`
-* **Host:** `prometheus.your-domain.com`
-* **Value:** `[IP/hostname from the command above]`
+### Step 10: Verify the Installation
 
-### Step 10: Verify Installation
-
-Wait 2-5 minutes for DNS propagation and SSL certificate issuance.
+Allow 2-5 minutes for DNS propagation and SSL certificate issuance.
 
 ```bash
-# Check if the certificate is ready
-kubectl get certificate -n monitoring
+# Test Prometheus locally via Port-Forwarding
+kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
+
+# Test Blackbox Exporter locally via Port-Forwarding
+kubectl port-forward -n monitoring svc/prometheus-blackbox-exporter 9115:9115
 
 ```
 
-* **Access Prometheus UI:** `https://prometheus.your-domain.com`
-* **Test Locally (Optional):**
-
-```bash
-  kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
-  # Access at: http://localhost:9090
-
-```
-
----
-
-## 📈 Add to Grafana
-
-### Step 1: Access Grafana
-
-```bash
-# Switch to monitoring cluster context
-export KUBECONFIG=/path/to/monitoring-cluster.config
-
-# Port-forward to Grafana
-kubectl port-forward -n monitoring svc/grafana 3000:80
-
-# Get admin password
-kubectl get secret -n monitoring grafana \
-  -o jsonpath="{.data.admin-password}" | base64 --decode
-
-```
-
-### Step 2: Add Data Source
-
-1. Login to Grafana at `http://localhost:3000`
-2. Navigate to **Configuration** → **Data Sources**
-3. Click **Add data source** → Select **Prometheus**
-4. Configure the following fields:
-* **Name:** `Prometheus-<cluster-name>`
-* **URL:** `https://prometheus.your-domain.com`
-* **HTTP Method:** `POST`
-
-
-5. Click **Save & Test**
-
-### Step 3: Verify Metrics Collection
-
-* **In Prometheus UI:** Go to **Status** → **Targets**. All targets should show as **"UP"**.
-* **In Grafana:** Go to **Explore**, select your new Prometheus datasource, and query `up` to verify metrics are flowing.
-
----
-
-## 🛠️ Useful Commands
-
-| Action | Command |
-| --- | --- |
-| **Check all resources** | `kubectl get pods,svc,ingress,certificate -n monitoring` |
-| **View Prometheus logs** | `kubectl logs -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0` |
-| **Check certificate details** | `kubectl describe certificate -n monitoring prometheus-tls-cert` |
-| **Restart ingress** | `kubectl rollout restart deployment -n ingress-nginx ingress-nginx-controller` |
-
----
-
-## ⚠️ Troubleshooting
-
-**Certificate not issuing**
-
-```bash
-kubectl describe certificate -n monitoring prometheus-tls-cert
-kubectl get certificaterequest -n monitoring
-kubectl logs -n cert-manager -l app=cert-manager
-
-```
-
-**Ingress not working**
-
-```bash
-kubectl describe ingress -n monitoring prometheus-ingress
-kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
-
-```
-
-**Pods not starting**
-
-```bash
-kubectl describe pod -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0
-kubectl get events -n monitoring --sort-by='.lastTimestamp'
-
-```
-
----
-
-## 🔄 Lifecycle Management
-
-### Upgrade Configuration
-
-Run this after making changes to your `prometheus-values.yaml`:
-
-```bash
-helm upgrade prometheus prometheus-community/kube-prometheus-stack \
-  -n monitoring \
-  --values prometheus-values.yaml
-
-```
-
-### Uninstall
-
-To completely remove the installation:
-
-```bash
-helm uninstall prometheus -n monitoring
-kubectl delete issuer letsencrypt-monitoring -n monitoring
-kubectl delete namespace monitoring
-
-```
+Once DNS propagates, you can access your secure Prometheus UI at `https://prometheus.your-domain.com`.
 
 ```
 
