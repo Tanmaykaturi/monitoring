@@ -1,3 +1,4 @@
+# prometheus-values.yaml
 grafana:
   enabled: false
 
@@ -9,16 +10,36 @@ prometheus:
   prometheusSpec:
     serviceMonitorSelectorNilUsesHelmValues: false
     externalLabels:
-      cluster: "your-cluster-name"  # UPDATE THIS
+      cluster: "YOUR-CLUSTER-NAME"  # UPDATE THIS
     retention: 15d
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: "standard"  # UPDATE THIS based on Step 1.4
+          storageClassName: "ssd"  # UPDATE THIS if different
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
               storage: 20Gi
+    
+    # Add cAdvisor scrape configuration
+    additionalScrapeConfigs:
+      - job_name: 'cadvisor'
+        scheme: http
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
 
 prometheusOperator:
   enabled: true
