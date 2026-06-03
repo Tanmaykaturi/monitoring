@@ -8,9 +8,6 @@
 Update the following fields with your specific environment details:
 * **Line 13:** `cluster` ➡️ `"YOUR-CLUSTER-NAME"`
 * **Line 19:** `storageClassName` ➡️ `"YOUR-STORAGE-CLASS"` *(Run `kubectl get storageclass` to find this)*
-* **Line 26-28:** `targets` (http) ➡️ `https://myapp.com`
-* **Line 43-45:** `targets` (tcp) ➡️ `db.example.com:5432`
-* **Line 59-61:** `targets` (icmp) ➡️ `8.8.8.8`
 
 
 #### 📄 `prometheus-ingress.yaml`
