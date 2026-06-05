@@ -67,6 +67,8 @@ config:
 
 serviceMonitor:
   enabled: true
+  labels:
+    release: prometheus    # ← ADD THIS LINE
   defaults:
     labels:
       release: prometheus
