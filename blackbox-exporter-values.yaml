@@ -127,7 +127,7 @@ serviceMonitor:
 
     # Your infrastructure endpoints
     - name: grafana-monitoring
-      url: https://grafana.monitoring.opsmx.org
+      url: #Add your garfana url here
       module: http_2xx_with_ssl
       labels:
         probe_type: http
@@ -135,7 +135,7 @@ serviceMonitor:
         service: grafana
 
     - name: prometheus-sandbox
-      url: http://prometheus.sandbox.opsmx.org
+      url: #Add your prometheus url here
       module: http_2xx
       labels:
         probe_type: http
