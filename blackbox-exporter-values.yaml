@@ -1,0 +1,176 @@
+image:
+  repository: quay.io/prometheus/blackbox-exporter
+  tag: v0.24.0
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+config:
+  modules:
+    # HTTP 2xx probe - checks if HTTP endpoint returns 200 OK
+    http_2xx:
+      prober: http
+      timeout: 5s
+      http:
+        valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+        valid_status_codes: [200]
+        method: GET
+        follow_redirects: true
+        preferred_ip_protocol: "ip4"
+
+    # HTTP POST probe - for API health checks
+    http_post_2xx:
+      prober: http
+      timeout: 5s
+      http:
+        valid_status_codes: [200]
+        method: POST
+        headers:
+          Content-Type: application/json
+        body: '{}'
+
+    # ICMP probe - ping test for network connectivity
+    icmp:
+      prober: icmp
+      timeout: 5s
+      icmp:
+        preferred_ip_protocol: "ip4"
+
+    # TCP probe - checks if port is open
+    tcp_connect:
+      prober: tcp
+      timeout: 5s
+      tcp:
+        preferred_ip_protocol: "ip4"
+
+    # DNS probe - checks DNS resolution
+    dns_query:
+      prober: dns
+      timeout: 5s
+      dns:
+        preferred_ip_protocol: "ip4"
+        query_name: google.com
+        query_type: "A"
+
+    # HTTP with SSL certificate check
+    http_2xx_with_ssl:
+      prober: http
+      timeout: 5s
+      http:
+        valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+        valid_status_codes: [200]
+        method: GET
+        follow_redirects: true
+        preferred_ip_protocol: "ip4"
+        fail_if_ssl: false
+        fail_if_not_ssl: true
+
+serviceMonitor:
+  enabled: true
+  defaults:
+    labels:
+      release: prometheus
+    interval: 30s
+    scrapeTimeout: 30s
+  targets:
+    # Internet connectivity checks (ICMP)
+    - name: internet-connectivity
+      url: 8.8.8.8
+      module: icmp
+      labels:
+        probe_type: icmp
+        target_type: internet
+
+    - name: cloudflare-dns
+      url: 1.1.1.1
+      module: icmp
+      labels:
+        probe_type: icmp
+        target_type: dns_server
+
+    # DNS resolution checks
+    - name: google-dns
+      url: google.com
+      module: dns_query
+      labels:
+        probe_type: dns
+        target_type: external
+
+    - name: internal-dns
+      url: kubernetes.default.svc.cluster.local
+      module: dns_query
+      labels:
+        probe_type: dns
+        target_type: internal
+
+    # HTTP connectivity checks
+    - name: google-http
+      url: https://google.com
+      module: http_2xx
+      labels:
+        probe_type: http
+        target_type: external
+
+    - name: gcr-registry
+      url: https://gcr.io
+      module: http_2xx
+      labels:
+        probe_type: http
+        target_type: registry
+
+    - name: docker-hub
+      url: https://hub.docker.com
+      module: http_2xx
+      labels:
+        probe_type: http
+        target_type: registry
+
+    # Your infrastructure endpoints
+    - name: grafana-monitoring
+      url: https://grafana.monitoring.opsmx.org
+      module: http_2xx_with_ssl
+      labels:
+        probe_type: http
+        target_type: internal_service
+        service: grafana
+
+    - name: prometheus-sandbox
+      url: http://prometheus.sandbox.opsmx.org
+      module: http_2xx
+      labels:
+        probe_type: http
+        target_type: internal_service
+        service: prometheus
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+service:
+  type: ClusterIP
+  port: 9115
+  annotations: {}
+
+# Optional: Pod disruption budget for high availability
+podDisruptionBudget:
+  maxUnavailable: 1
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Node selector (optional - uncomment if you want to pin to specific nodes)
+# nodeSelector:
+#   monitoring: "true"
+
+# Tolerations (optional)
+# tolerations: []
+
+# Affinity (optional)
+# affinity: {}
