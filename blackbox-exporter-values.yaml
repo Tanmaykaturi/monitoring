@@ -1,6 +1,6 @@
 image:
   repository: quay.io/prometheus/blackbox-exporter
-  tag: v0.24.0
+  tag: v0.28.0
   pullPolicy: IfNotPresent
 
 replicas: 1
@@ -8,6 +8,7 @@ replicas: 1
 config:
   modules:
     # HTTP 2xx probe - checks if HTTP endpoint returns 200 OK
+    # Use for: Web applications, APIs, health endpoints
     http_2xx:
       prober: http
       timeout: 5s
@@ -18,7 +19,8 @@ config:
         follow_redirects: true
         preferred_ip_protocol: "ip4"
 
-    # HTTP POST probe - for API health checks
+    # HTTP POST probe - for API health checks that require POST
+    # Use for: REST APIs, webhook endpoints
     http_post_2xx:
       prober: http
       timeout: 5s
@@ -30,29 +32,23 @@ config:
         body: '{}'
 
     # ICMP probe - ping test for network connectivity
+    # Use for: Basic reachability checks, network latency monitoring
     icmp:
       prober: icmp
       timeout: 5s
       icmp:
         preferred_ip_protocol: "ip4"
 
-    # TCP probe - checks if port is open
+    # TCP probe - checks if port is open and accepts connections
+    # Use for: Database ports, service ports, internal services
     tcp_connect:
       prober: tcp
       timeout: 5s
       tcp:
         preferred_ip_protocol: "ip4"
 
-    # DNS probe - checks DNS resolution
-    dns_query:
-      prober: dns
-      timeout: 5s
-      dns:
-        preferred_ip_protocol: "ip4"
-        query_name: google.com
-        query_type: "A"
-
     # HTTP with SSL certificate check
+    # Use for: HTTPS endpoints where you want to monitor SSL cert expiry
     http_2xx_with_ssl:
       prober: http
       timeout: 5s
@@ -67,45 +63,38 @@ config:
 
 serviceMonitor:
   enabled: true
+  # IMPORTANT: This label must match your Prometheus release name
+  # Default is 'prometheus' - change if your Prometheus has a different release name
   labels:
-    release: prometheus    # ← ADD THIS LINE
+    release: prometheus
   defaults:
     labels:
       release: prometheus
-    interval: 30s
-    scrapeTimeout: 30s
+    interval: 30s        # How often to scrape metrics
+    scrapeTimeout: 30s   # Timeout for each scrape
   targets:
-    # Internet connectivity checks (ICMP)
+    # ========================================
+    # Internet Connectivity Checks (ICMP)
+    # ========================================
+    # Keep these as-is for all clusters - monitors basic internet reachability
     - name: internet-connectivity
-      url: 8.8.8.8
+      url: 8.8.8.8    # Google Public DNS
       module: icmp
       labels:
         probe_type: icmp
         target_type: internet
 
     - name: cloudflare-dns
-      url: 1.1.1.1
+      url: 1.1.1.1    # Cloudflare Public DNS
       module: icmp
       labels:
         probe_type: icmp
         target_type: dns_server
 
-    # DNS resolution checks
-    - name: google-dns
-      url: google.com
-      module: dns_query
-      labels:
-        probe_type: dns
-        target_type: external
-
-    - name: internal-dns
-      url: kubernetes.default.svc.cluster.local
-      module: dns_query
-      labels:
-        probe_type: dns
-        target_type: internal
-
-    # HTTP connectivity checks
+    # ========================================
+    # External HTTP Connectivity Checks
+    # ========================================
+    # Keep these as-is - monitors external service availability
     - name: google-http
       url: https://google.com
       module: http_2xx
@@ -113,6 +102,8 @@ serviceMonitor:
         probe_type: http
         target_type: external
 
+    # Container Registry Availability
+    # Critical for image pulls during deployments
     - name: gcr-registry
       url: https://gcr.io
       module: http_2xx
@@ -127,52 +118,145 @@ serviceMonitor:
         probe_type: http
         target_type: registry
 
-    # Your infrastructure endpoints
+    # ========================================
+    # Internal Infrastructure Endpoints
+    # ========================================
+    # REPLACE THESE WITH YOUR ACTUAL URLS
+    
     - name: grafana-monitoring
-      url: #Add your garfana url here
-      module: http_2xx_with_ssl
+      url: <GRAFANA_URL>  # Example: https://grafana.monitoring.example.com
+      module: http_2xx_with_ssl  # Use http_2xx if not HTTPS
       labels:
         probe_type: http
         target_type: internal_service
         service: grafana
+        cluster: <CLUSTER_NAME>  # Example: production, staging, dev
 
-    - name: prometheus-sandbox
-      url: #Add your prometheus url here
-      module: http_2xx
+    - name: prometheus-<CLUSTER_NAME>
+      url: <PROMETHEUS_URL>  # Example: http://prometheus.example.com or https://prometheus.example.com
+      module: http_2xx       # Change to http_2xx_with_ssl if HTTPS
       labels:
         probe_type: http
         target_type: internal_service
         service: prometheus
+        cluster: <CLUSTER_NAME>  # Example: production, staging, dev
 
+    # ========================================
+    # Ingress Endpoints - Application URLs
+    # ========================================
+    # AUTO-GENERATE THESE WITH THE SCRIPT:
+    #   ./generate-blackbox-ingress.sh <kubeconfig-path> <cluster-name>
+    #
+    # OR MANUALLY ADD EACH INGRESS ENDPOINT:
+    #
+    # - name: <ingress-name>-ingress
+    #   url: https://<ingress-host>.<domain>
+    #   module: http_2xx_with_ssl  # Use http_2xx if HTTP only
+    #   labels:
+    #     probe_type: http
+    #     target_type: ingress
+    #     service: <service-name>
+    #     namespace: <namespace>
+    #     cluster: <CLUSTER_NAME>
+    #
+    # EXAMPLE:
+    # - name: my-app-ingress
+    #   url: https://myapp.example.com
+    #   module: http_2xx_with_ssl
+    #   labels:
+    #     probe_type: http
+    #     target_type: ingress
+    #     service: my-app
+    #     namespace: production
+    #     cluster: production-cluster
+
+    # ========================================
+    # Additional Custom Endpoints (Optional)
+    # ========================================
+    # Add environment-specific endpoints below
+
+    # Example: Database port check
+    # - name: postgres-check
+    #   url: postgres.default.svc.cluster.local:5432
+    #   module: tcp_connect
+    #   labels:
+    #     probe_type: tcp
+    #     service: postgres
+    #     cluster: <CLUSTER_NAME>
+
+    # Example: Internal service HTTP check
+    # - name: api-service-check
+    #   url: http://api-service.default.svc.cluster.local:8080/health
+    #   module: http_2xx
+    #   labels:
+    #     probe_type: http
+    #     service: api-service
+    #     cluster: <CLUSTER_NAME>
+
+# Resource limits for blackbox exporter pod
+# Adjust based on number of targets and cluster size
 resources:
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 100m      # Increase to 200m if monitoring 50+ endpoints
+    memory: 128Mi  # Increase to 256Mi if monitoring 100+ endpoints
   limits:
-    cpu: 200m
-    memory: 256Mi
+    cpu: 200m      # Increase to 500m if monitoring 100+ endpoints
+    memory: 256Mi  # Increase to 512Mi if monitoring 100+ endpoints
 
+# Service configuration
 service:
   type: ClusterIP
   port: 9115
   annotations: {}
 
-# Optional: Pod disruption budget for high availability
+# Pod disruption budget for high availability
+# Ensures at least one pod is always available during updates
 podDisruptionBudget:
   maxUnavailable: 1
 
-# Security context
-securityContext:
+# Pod Security context
+podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
   fsGroup: 1000
 
-# Node selector (optional - uncomment if you want to pin to specific nodes)
+# Container Security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    add:
+      - NET_RAW  # Required for ICMP probes
+    drop:
+      - ALL
+
+# Node selector (optional - pin to specific nodes)
+# Uncomment and configure if you want to run on specific nodes
 # nodeSelector:
 #   monitoring: "true"
+#   node.kubernetes.io/instance-type: t3.medium
 
-# Tolerations (optional)
-# tolerations: []
+# Tolerations (optional - allow scheduling on tainted nodes)
+# Uncomment if your monitoring nodes have taints
+# tolerations:
+#   - key: "monitoring"
+#     operator: "Equal"
+#     value: "true"
+#     effect: "NoSchedule"
 
-# Affinity (optional)
-# affinity: {}
+# Affinity (optional - pod placement rules)
+# Uncomment for advanced scheduling
+# affinity:
+#   podAntiAffinity:
+#     preferredDuringSchedulingIgnoredDuringExecution:
+#       - weight: 100
+#         podAffinityTerm:
+#           labelSelector:
+#             matchExpressions:
+#               - key: app.kubernetes.io/name
+#                 operator: In
+#                 values:
+#                   - prometheus-blackbox-exporter
+#           topologyKey: kubernetes.io/hostname
